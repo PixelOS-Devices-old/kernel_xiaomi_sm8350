@@ -13,3 +13,8 @@ config TOUCHSCREEN_GOODIX_BRL_9916
 config TOUCHSCREEN_QGKI_GOODIX
 	default n
 	bool "QGKI config"
+
+config CONFIG_TAOYAO_FOR_BUILD
+	bool "Goodix berlin taoyao support"
+	help
+		Say Y to include OSS kernel changes for taoyao

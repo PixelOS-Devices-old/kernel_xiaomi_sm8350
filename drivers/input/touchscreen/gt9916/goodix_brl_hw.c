@@ -171,6 +171,92 @@ static int brl_reset_after(struct goodix_ts_core *cd)
 	return 0;
 }
 
+#ifdef CONFIG_TAOYAO_FOR_BUILD
+static int brl_power_on(struct goodix_ts_core *cd, bool on)
+{
+	int ret = 0;
+	int iovdd_gpio = cd->board_data.iovdd_gpio;
+	int avdd_gpio = cd->board_data.avdd_gpio;
+	int reset_gpio = cd->board_data.reset_gpio;
+
+	if (!cd->avdd || !cd->iovdd) {
+		if (on) {
+			if (avdd_gpio > 0 && iovdd_gpio > 0) {
+				gpio_direction_output(iovdd_gpio, 1);
+				usleep_range(3000, 3100);
+				gpio_direction_output(avdd_gpio, 1);
+				usleep_range(15000, 15100);
+			}
+			gpio_direction_output(reset_gpio, 1);
+			ret = brl_reset_after(cd);
+			if (ret < 0) {
+				ts_err("reset_after process failed");
+				gpio_direction_output(reset_gpio, 0);
+				if (avdd_gpio > 0 && iovdd_gpio > 0) {
+					gpio_direction_output(iovdd_gpio, 0);
+					gpio_direction_output(avdd_gpio, 0);
+				}
+				return ret;
+			}
+			msleep(GOODIX_NORMAL_RESET_DELAY_MS);
+		} else {
+			gpio_direction_output(reset_gpio, 0);
+			if (avdd_gpio > 0 && iovdd_gpio > 0) {
+				gpio_direction_output(iovdd_gpio, 0);
+				gpio_direction_output(avdd_gpio, 0);
+			}
+			usleep_range(10000, 11000);
+		}
+		return 0;
+	}
+
+	if (on) {
+		ts_info("iovdd enbaled before avdd");
+		ret = regulator_enable(cd->iovdd);
+		if (ret) {
+			ts_err("Failed to enable iovdd:%d", ret);
+			return ret;
+		}
+		ts_info("iovdd regulator enbaled success");
+		usleep_range(3000, 3100);
+		ret = regulator_enable(cd->avdd);
+		if (ret) {
+			regulator_disable(cd->iovdd);
+			ts_err("Failed to enable avdd:%d", ret);
+			return ret;
+		}
+		ts_info("regulator enable SUCCESS");
+		gpio_direction_output(avdd_gpio, 1);
+		ts_info("avdd gpio init success");
+		usleep_range(15000, 15100);
+		gpio_direction_output(reset_gpio, 1);
+		ts_info("reset gpio init success");
+		ret = brl_reset_after(cd);
+		if (ret < 0) {
+			ts_err("reset_after process failed");
+			gpio_direction_output(avdd_gpio, 0);
+			gpio_direction_output(reset_gpio, 0);
+			return ret;
+		}
+		msleep(GOODIX_NORMAL_RESET_DELAY_MS);
+		return 0;
+	}
+
+	/*power off process */
+	gpio_direction_output(reset_gpio, 0);
+	ret = regulator_disable(cd->iovdd);
+	if (ret)
+		ts_err("Failed to disable iovdd:%d", ret);
+	gpio_direction_output(avdd_gpio, 0);
+	ret = regulator_disable(cd->avdd);
+	if (ret)
+		ts_err("Failed to disable avdd:%d", ret);
+	usleep_range(10000, 11000);
+	
+	return ret;
+
+}
+#else
 static int brl_power_on(struct goodix_ts_core *cd, bool on)
 {
 	int ret = 0;
@@ -212,6 +298,7 @@ static int brl_power_on(struct goodix_ts_core *cd, bool on)
 	return ret;
 
 }
+#endif
 
 #define GOODIX_SLEEP_CMD	0x84
 int brl_suspend(struct goodix_ts_core *cd)
