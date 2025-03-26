@@ -174,8 +174,44 @@ static int brl_reset_after(struct goodix_ts_core *cd)
 static int brl_power_on(struct goodix_ts_core *cd, bool on)
 {
 	int ret = 0;
+#ifdef CONFIG_TOUCHSCREEN_GOODIX_BRL_9916_FOR_TAOYAO
+	int iovdd_gpio = cd->board_data.iovdd_gpio;
+#endif
 	int avdd_gpio = cd->board_data.avdd_gpio;
 	int reset_gpio = cd->board_data.reset_gpio;
+
+#ifdef CONFIG_TOUCHSCREEN_GOODIX_BRL_9916_FOR_TAOYAO
+	if (!cd->avdd || !cd->iovdd) {
+		if (on) {
+			if (avdd_gpio > 0 && iovdd_gpio > 0) {
+				gpio_direction_output(iovdd_gpio, 1);
+				usleep_range(3000, 3100);
+				gpio_direction_output(avdd_gpio, 1);
+				usleep_range(15000, 15100);
+			}
+			gpio_direction_output(reset_gpio, 1);
+			ret = brl_reset_after(cd);
+			if (ret < 0) {
+				ts_err("reset_after process failed");
+				gpio_direction_output(reset_gpio, 0);
+				if (avdd_gpio > 0 && iovdd_gpio > 0) {
+					gpio_direction_output(iovdd_gpio, 0);
+					gpio_direction_output(avdd_gpio, 0);
+				}
+				return ret;
+			}
+			msleep(GOODIX_NORMAL_RESET_DELAY_MS);
+		} else {
+			gpio_direction_output(reset_gpio, 0);
+			if (avdd_gpio > 0 && iovdd_gpio > 0) {
+				gpio_direction_output(iovdd_gpio, 0);
+				gpio_direction_output(avdd_gpio, 0);
+			}
+			usleep_range(10000, 11000);
+		}
+		return 0;
+	}
+#endif
 
 	if (on) {
 		ts_info("iovdd enbaled before avdd");
@@ -186,6 +222,15 @@ static int brl_power_on(struct goodix_ts_core *cd, bool on)
 		}
 		ts_info("iovdd regulator enbaled success");
 		usleep_range(3000, 3100);
+#ifdef CONFIG_TOUCHSCREEN_GOODIX_BRL_9916_FOR_TAOYAO
+		ret = regulator_enable(cd->avdd);
+		if (ret) {
+			regulator_disable(cd->iovdd);
+			ts_err("Failed to enable avdd:%d", ret);
+			return ret;
+		}
+		ts_info("regulator enable SUCCESS");
+#endif
 		gpio_direction_output(avdd_gpio, 1);
 		ts_info("avdd gpio init success");
 		usleep_range(15000, 15100);
@@ -195,6 +240,9 @@ static int brl_power_on(struct goodix_ts_core *cd, bool on)
 		if (ret < 0) {
 			ts_err("reset_after process failed");
 			gpio_direction_output(avdd_gpio, 0);
+#ifdef CONFIG_TOUCHSCREEN_GOODIX_BRL_9916_FOR_TAOYAO
+			gpio_direction_output(reset_gpio, 0);
+#endif
 			return ret;
 		}
 		msleep(GOODIX_NORMAL_RESET_DELAY_MS);
@@ -207,6 +255,11 @@ static int brl_power_on(struct goodix_ts_core *cd, bool on)
 	if (ret)
 		ts_err("Failed to disable iovdd:%d", ret);
 	gpio_direction_output(avdd_gpio, 0);
+#ifdef CONFIG_TOUCHSCREEN_GOODIX_BRL_9916_FOR_TAOYAO
+	ret = regulator_disable(cd->avdd);
+	if (ret)
+		ts_err("Failed to disable avdd:%d", ret);
+#endif
 	usleep_range(10000, 11000);
 	
 	return ret;
